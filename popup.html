@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lileep</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      background: #f0f2f5;
+      color: #1c1e21;
+    }
+
+    header {
+      padding: 12px 16px;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    header.facebook { background: #1877f2; color: white; }
+    header.gmaps    { background: #1a73e8; color: white; }
+    header.neutral  { background: #444; color: white; }
+
+    header span {
+      font-weight: 400;
+      font-size: 11px;
+      opacity: 0.85;
+      display: block;
+      margin-top: 2px;
+    }
+
+    header .badge {
+      font-size: 10px;
+      font-weight: 600;
+      background: rgba(255,255,255,0.25);
+      padding: 2px 7px;
+      border-radius: 10px;
+    }
+
+    .body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+
+    .field label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #606770;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid #ccd0d5;
+      border-radius: 6px;
+      font-size: 13px;
+      background: white;
+      outline: none;
+    }
+
+    .field input:focus,
+    .field select:focus { border-color: #1a73e8; }
+
+    .row { display: flex; align-items: center; gap: 8px; }
+    .row label { font-size: 12px; color: #606770; cursor: pointer; user-select: none; }
+    input[type="checkbox"] { accent-color: #1877f2; cursor: pointer; }
+
+    /* extracted business data preview */
+    .biz-card {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #333;
+    }
+
+    .biz-card .biz-name {
+      font-weight: 700;
+      font-size: 14px;
+      color: #111;
+      margin-bottom: 4px;
+    }
+
+    .biz-card .biz-row {
+      color: #555;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .biz-card .biz-row span {
+      color: #888;
+      font-size: 11px;
+    }
+
+    button.primary {
+      width: 100%;
+      padding: 9px;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    button.primary:hover   { filter: brightness(0.92); }
+    button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .fb-btn  { background: #1877f2; }
+    .td-btn  { background: #1a73e8; }
+
+    #status {
+      font-size: 12px;
+      min-height: 16px;
+      color: #606770;
+      text-align: center;
+    }
+    #status.error   { color: #fa383e; }
+    #status.success { color: #2e7d32; }
+
+    #preview {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 11px;
+      color: #444;
+      max-height: 110px;
+      overflow-y: auto;
+      display: none;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    .count { font-size: 11px; color: #606770; text-align: right; }
+
+    details { font-size: 12px; }
+    details summary {
+      cursor: pointer;
+      color: #606770;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      user-select: none;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #e0e0e0;
+    }
+
+    /* success link */
+    #seedResult a {
+      color: #1a73e8;
+      font-size: 12px;
+      text-decoration: none;
+      display: block;
+      text-align: center;
+      margin-top: 4px;
+    }
+    #seedResult { display: none; }
+
+    /* API target toggle */
+    #apiBar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: #f0f2f5;
+      border-top: 1px solid #ddd;
+    }
+    #apiBar .api-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
+    }
+    .api-pill {
+      flex: 1;
+      padding: 4px 0;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background: white;
+      font-size: 11px;
+      font-weight: 600;
+      color: #555;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .api-pill.active-local { background: #e8f5e9; border-color: #66bb6a; color: #2e7d32; }
+    .api-pill.active-live  { background: #e3f2fd; border-color: #42a5f5; color: #1565c0; }
+    .api-pill:not(.active-local):not(.active-live):hover { background: #f5f5f5; }
+    #apiUrl {
+      font-size: 10px;
+      color: #aaa;
+      text-align: center;
+      padding: 0 14px 6px;
+      background: #f0f2f5;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════
+       FACEBOOK MODE
+  ════════════════════════════════════════════════ -->
+  <div id="fbMode" style="display:none">
+    <header class="facebook">
+      Lileep
+      <div>
+        <span>NEPSE Facebook Scraper</span>
+      </div>
+      <div class="badge">FB</div>
+    </header>
+    <div class="body">
+      <div class="field">
+        <label>Group name (for tagging)</label>
+        <input type="text" id="groupName" placeholder="e.g. NEPSE Traders Nepal" />
+      </div>
+      <div class="row">
+        <input type="checkbox" id="autoScroll" checked />
+        <label for="autoScroll">Auto-scroll to load more posts</label>
+      </div>
+      <div class="row">
+        <input type="checkbox" id="sendToApi" checked />
+        <label for="sendToApi">Send to local API (localhost:8000)</label>
+      </div>
+      <button id="scrape" class="primary fb-btn">Scrape Posts</button>
+      <div id="status"></div>
+      <div class="count" id="count"></div>
+      <pre id="preview"></pre>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       GOOGLE MAPS MODE
+  ════════════════════════════════════════════════ -->
+  <div id="gmapsMode" style="display:none">
+    <header class="gmaps">
+      Lileep
+      <div><span>TomDum Business Seeder</span></div>
+      <div class="badge">Maps</div>
+    </header>
+    <div class="body">
+      <div style="font-size:12px; color:#444; line-height:1.6; padding: 4px 0;">
+        The <strong>TomDum Seeder panel</strong> is injected directly on the page.<br/><br/>
+        Navigate to a business listing on Google Maps and look for the blue panel in the <strong>bottom-right corner</strong>.
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       NEUTRAL / UNSUPPORTED PAGE
+  ════════════════════════════════════════════════ -->
+  <div id="neutralMode" style="display:none">
+    <header class="neutral">
+      Lileep
+      <div><span>Scraper & TomDum Seeder</span></div>
+    </header>
+    <div class="body">
+      <div id="status" style="color:#606770; font-size:12px; text-align:center; padding: 8px 0;">
+        Navigate to a <strong>Facebook group</strong> or a <strong>Google Maps business page</strong> to begin.
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       API TARGET TOGGLE (always visible)
+  ════════════════════════════════════════════════ -->
+  <div id="apiBar">
+    <span class="api-label">API</span>
+    <button class="api-pill" id="pillLocal">Local</button>
+    <button class="api-pill" id="pillLive">Live</button>
+  </div>
+  <div id="apiUrl"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Lileep — Scraper & TomDum Seeder",
+  "version": "1.1.0",
+  "description": "Scrapes Facebook group posts for NEPSE pipeline and seeds businesses into TomDum from Google Maps.",
+
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+
+  "host_permissions": [
+    "https://www.facebook.com/*",
+    "https://www.google.com/*",
+    "http://localhost/*",
+    "https://tomdum.com/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Lileep"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["https://www.facebook.com/groups/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.google.com/maps/*"],
+      "js": ["gmaps-state.js", "gmaps-extractors.js", "gmaps-ui.js", "gmaps-content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
