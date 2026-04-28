@@ -141,12 +141,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   // ── TomDum: create new category ───────────────────────────────
   if (message.action === "CREATE_CATEGORY") {
-    const { token, name, icon } = message;
+    const { token, name, icon, parentId } = message;
     getApiBase().then((base) =>
       fetch(`${base}/admin/categories`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ name, icon }),
+        body: JSON.stringify({ name, icon, parentId: parentId || undefined }),
       })
         .then(async (res) => {
           const body = await res.json().catch(() => ({}));

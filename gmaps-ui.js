@@ -205,6 +205,14 @@ function injectStyles() {
       border-radius: 5px; font-size: 11px; cursor: pointer; align-self: flex-start;
     }
     #tomdum-preview-overlay .td-copy-btn:hover { background: #444; }
+
+    /* Category tree dropdown */
+    #tomdum-seed-panel .td-tree-parent { font-weight: 600; color: #222; background: #f5f7fa; }
+    #tomdum-seed-panel .td-tree-parent:hover,
+    #tomdum-seed-panel .td-tree-parent.highlighted { background: #e8f0fe; }
+    #tomdum-seed-panel .td-tree-arrow { font-size: 9px; color: #888; margin-right: 5px; }
+    #tomdum-seed-panel .td-tree-dot { display: inline-block; width: 12px; color: #ccc; margin-right: 3px; text-align: center; }
+    #tomdum-seed-panel .td-tree-context { font-size: 10px; color: #aaa; margin-left: 6px; font-style: italic; }
   `;
   document.head.appendChild(style);
 }
@@ -302,6 +310,154 @@ function makeSearchableDropdown(wrap, items, placeholder) {
 }
 
 // ─────────────────────────────────────────────
+// Category tree dropdown
+// ─────────────────────────────────────────────
+
+/**
+ * Like makeSearchableDropdown but renders the nested category tree returned by
+ * GET /categories: [{ id, name, children: [{ id, name }] }]
+ *
+ * Browse mode  → shows parents as bold group headers with children indented.
+ * Search mode  → shows flat filtered results with "(Parent)" context label.
+ * Both parents and children are selectable.
+ */
+function makeCategoryTreeDropdown(wrap, categories, placeholder) {
+  let selected    = { id: "", label: "" };
+  let highlighted = -1;
+
+  wrap.innerHTML = `
+    <input class="td-search-input" type="text" placeholder="${placeholder}" autocomplete="off" />
+    <span class="td-search-caret">▼</span>
+    <div class="td-search-dropdown"></div>
+  `;
+
+  const input    = wrap.querySelector(".td-search-input");
+  const dropdown = wrap.querySelector(".td-search-dropdown");
+
+  function esc(str) { return str.replace(/"/g, "&quot;"); }
+
+  // Flat list of all items (parents + children) used for search
+  function flatAll() {
+    const out = [];
+    categories.forEach(parent => {
+      out.push({ id: parent.id, name: parent.name, parentName: null });
+      (parent.children ?? []).forEach(child => {
+        out.push({ id: child.id, name: child.name, parentName: parent.name });
+      });
+    });
+    return out;
+  }
+
+  function renderTree() {
+    highlighted = -1;
+    if (categories.length === 0) {
+      dropdown.innerHTML = `<div class="td-search-empty">No categories</div>`;
+      dropdown.classList.add("open");
+      return;
+    }
+    const rows = [];
+    categories.forEach(parent => {
+      const hasChildren = (parent.children ?? []).length > 0;
+      rows.push(
+        `<div class="td-search-item${hasChildren ? " td-tree-parent" : ""}${parent.id === selected.id ? " selected" : ""}"
+              data-id="${esc(parent.id)}" data-label="${esc(parent.name)}">
+           ${hasChildren ? '<span class="td-tree-arrow">▸</span>' : ""}${parent.name}
+         </div>`
+      );
+      (parent.children ?? []).forEach(child => {
+        rows.push(
+          `<div class="td-search-item${child.id === selected.id ? " selected" : ""}"
+                data-id="${esc(child.id)}" data-label="${esc(child.name)}"
+                style="padding-left:22px">
+             <span class="td-tree-dot">·</span>${child.name}
+           </div>`
+        );
+      });
+    });
+    dropdown.innerHTML = rows.join("");
+    bindClicks();
+    dropdown.classList.add("open");
+  }
+
+  function renderSearch(query) {
+    highlighted = -1;
+    const q = query.toLowerCase();
+    const matches = flatAll().filter(c => c.name.toLowerCase().includes(q));
+    if (matches.length === 0) {
+      dropdown.innerHTML = `<div class="td-search-empty">No results</div>`;
+    } else {
+      dropdown.innerHTML = matches.map(c =>
+        `<div class="td-search-item${c.id === selected.id ? " selected" : ""}"
+              data-id="${esc(c.id)}" data-label="${esc(c.name)}">
+           ${c.name}${c.parentName ? `<span class="td-tree-context">${c.parentName}</span>` : ""}
+         </div>`
+      ).join("");
+      bindClicks();
+    }
+    dropdown.classList.add("open");
+  }
+
+  function bindClicks() {
+    dropdown.querySelectorAll(".td-search-item").forEach(el => {
+      el.addEventListener("mousedown", e => {
+        e.preventDefault();
+        selectItem({ id: el.dataset.id, label: el.dataset.label });
+      });
+    });
+  }
+
+  function selectItem(item) {
+    selected = item;
+    input.value = item.label;
+    dropdown.classList.remove("open");
+    highlighted = -1;
+  }
+
+  function moveHighlight(dir) {
+    const els = [...dropdown.querySelectorAll(".td-search-item")];
+    if (!els.length) return;
+    els.forEach(e => e.classList.remove("highlighted"));
+    highlighted = Math.max(0, Math.min(els.length - 1, highlighted + dir));
+    els[highlighted]?.classList.add("highlighted");
+    els[highlighted]?.scrollIntoView({ block: "nearest" });
+  }
+
+  input.addEventListener("focus", () => input.value.trim() ? renderSearch(input.value) : renderTree());
+  input.addEventListener("input", () => input.value.trim() ? renderSearch(input.value) : renderTree());
+  input.addEventListener("keydown", e => {
+    if      (e.key === "ArrowDown") { e.preventDefault(); moveHighlight(1); }
+    else if (e.key === "ArrowUp")   { e.preventDefault(); moveHighlight(-1); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      const hl = dropdown.querySelector(".td-search-item.highlighted");
+      if (hl) selectItem({ id: hl.dataset.id, label: hl.dataset.label });
+    }
+    else if (e.key === "Escape") dropdown.classList.remove("open");
+  });
+
+  document.addEventListener("click", e => {
+    if (!wrap.contains(e.target)) dropdown.classList.remove("open");
+  }, true);
+
+  return {
+    getValue: () => selected.id,
+    setValue: (id, label) => { selected = { id, label }; input.value = label; },
+    addItem: (item) => {
+      if (item.parentId) {
+        const parent = categories.find(c => c.id === item.parentId);
+        if (parent) {
+          parent.children = parent.children ?? [];
+          parent.children.push({ id: item.id, name: item.label });
+          return;
+        }
+      }
+      categories.push({ id: item.id, name: item.label, children: [] });
+    },
+    reset:    () => { selected = { id: "", label: "" }; input.value = ""; },
+  };
+}
+
+// ─────────────────────────────────────────────
 // Floating panel — created once, reused across cards
 // ─────────────────────────────────────────────
 
@@ -326,9 +482,14 @@ function getOrCreatePanel() {
           <span class="td-add-link" id="td-add-cat-link">+ Add new</span>
         </div>
         <div class="td-search-wrap" id="td-category-wrap"></div>
-        <div class="td-add-row" id="td-add-cat-row" style="display:none">
-          <input type="text" id="td-new-cat-name" placeholder="Category name (e.g. Bakery)" />
-          <button id="td-create-cat-btn">Create</button>
+        <div id="td-add-cat-row" style="display:none; flex-direction:column; gap:5px; margin-top:5px">
+          <select id="td-parent-cat-select" style="width:100%;padding:5px 8px;border:1px solid #ccc;border-radius:6px;font-size:11px;outline:none;cursor:pointer">
+            <option value="">— Top-level category —</option>
+          </select>
+          <div class="td-add-row" style="margin-top:0">
+            <input type="text" id="td-new-cat-name" placeholder="Category name (e.g. Bakery)" />
+            <button id="td-create-cat-btn">Create</button>
+          </div>
         </div>
       </div>
       <div>
@@ -359,9 +520,9 @@ function getOrCreatePanel() {
   };
 
   // Initialise searchable dropdowns
-  const catDropdown  = makeSearchableDropdown(
+  const catDropdown = makeCategoryTreeDropdown(
     panel.querySelector("#td-category-wrap"),
-    tdCategories.map((c) => ({ id: c.id, label: c.name })),
+    tdCategories,
     "Search category…"
   );
   const areaDropdown = makeSearchableDropdown(
@@ -379,8 +540,15 @@ function getOrCreatePanel() {
   // ── Add new category ──────────────────────────────────────────
   panel.querySelector("#td-add-cat-link").addEventListener("click", () => {
     const row = panel.querySelector("#td-add-cat-row");
-    row.style.display = row.style.display === "none" ? "flex" : "none";
-    if (row.style.display === "flex") panel.querySelector("#td-new-cat-name").focus();
+    const opening = row.style.display === "none";
+    row.style.display = opening ? "flex" : "none";
+    if (opening) {
+      // Populate parent dropdown with current top-level categories
+      const select = row.querySelector("#td-parent-cat-select");
+      select.innerHTML = '<option value="">— Top-level category —</option>' +
+        tdCategories.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+      panel.querySelector("#td-new-cat-name").focus();
+    }
   });
 
   panel.querySelector("#td-create-cat-btn").addEventListener("click", async () => {
@@ -391,25 +559,27 @@ function getOrCreatePanel() {
     const name = nameInput.value.trim();
     if (!name) { setStatus("Enter a category name.", "error"); return; }
 
+    const parentId = panel.querySelector("#td-parent-cat-select")?.value || null;
+
     const btn = panel.querySelector("#td-create-cat-btn");
     btn.disabled = true;
     btn.textContent = "Creating…";
 
     chrome.runtime.sendMessage(
-      { action: "CREATE_CATEGORY", token: tomdumToken, name },
+      { action: "CREATE_CATEGORY", token: tomdumToken, name, parentId },
       (res) => {
         btn.disabled = false;
         btn.textContent = "Create";
         if (!res?.success) { setStatus("Error: " + (res?.error ?? "unknown"), "error"); return; }
 
         const cat = res.data;
-        tdCategories.push(cat);
-        panel._catDropdown.addItem({ id: cat.id, label: cat.name });
+        panel._catDropdown.addItem({ id: cat.id, label: cat.name, parentId: cat.parentId ?? null });
         panel._catDropdown.setValue(cat.id, cat.name);
 
         nameInput.value = "";
         panel.querySelector("#td-add-cat-row").style.display = "none";
-        setStatus(`Category "${cat.name}" created ✓`, "success");
+        const parentName = parentId ? tdCategories.find(c => c.id === parentId)?.name : null;
+        setStatus(`${parentName ? `Subcategory of "${parentName}"` : "Category"} "${cat.name}" created ✓`, "success");
       }
     );
   });

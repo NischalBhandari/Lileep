@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/Acer/TomDum.com/**)",
+      "Bash(grep -E \"\\\\.\\(ts|js|prisma\\)$\")"
+    ]
+  }
+}
