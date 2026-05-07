@@ -6,24 +6,73 @@
 // ─────────────────────────────────────────────
 
 function extractFromCard(article) {
+  // Name — class stable enough in practice
   const name = article.querySelector(".qBF1Pd")?.textContent?.trim() ?? null;
 
-  const firstRow = article.querySelector(".W4Efsd .W4Efsd");
+  // Category + address — only nested .W4Efsd divs; exclude the rating row (.AJB7ye)
   let googleCategory = null, address = null;
-  if (firstRow) {
-    const parts = (firstRow.textContent ?? "").split("·").map((p) => p.trim()).filter(Boolean);
-    if (parts.length > 0) googleCategory = parts[0];
-    if (parts.length > 1) address = parts[parts.length - 1];
+  const infoRows = [...article.querySelectorAll(".W4Efsd .W4Efsd")]
+    .filter(el => !el.closest(".AJB7ye"));
+
+  for (const row of infoRows) {
+    const text = row.textContent?.trim() ?? "";
+    if (!text) continue;
+    const parts = text.split("·").map(p => p.trim()).filter(Boolean);
+    if (!parts.length) continue;
+
+    const first = parts[0];
+    // Skip rating rows ("4.9 (447)") and hours-status rows ("Closed", "Closes soon", etc.)
+    if (/^\d+\.?\d*\s*[\(\d]/.test(first)) continue;
+    if (/^(open|closed|closes|opens|\d{1,2}:\d{2})/i.test(first)) continue;
+
+    if (!googleCategory) googleCategory = first;
+
+    if (parts.length > 1) {
+      const last = parts[parts.length - 1];
+      // Reject if it looks like hours status or a Plus Code (e.g. "P83X+9H7")
+      if (!/^(open|closed|closes|opens)/i.test(last) &&
+          !/^\d{1,2}:\d{2}\s*(AM|PM)/i.test(last) &&
+          !/^[A-Z0-9]{4,5}\+[A-Z0-9]{2,4}$/.test(last)) {
+        address = last;
+      }
+    }
+
+    if (googleCategory && address) break;
   }
 
-  const phone = article.querySelector(".UsdlK")?.textContent?.trim() ?? null;
-
-  const websiteEl = article.querySelector("a.lcr4fd[href]");
-  let website = websiteEl?.getAttribute("href") ?? null;
-  if (website && (website.startsWith("/aclk") || website.includes("google.com/aclk"))) {
-    website = null;
+  // Phone — stable: prefer tel: link; class-based selector as fallback
+  let phone = null;
+  const telLink = article.querySelector("a[href^='tel:']");
+  if (telLink) {
+    phone = telLink.getAttribute("href").replace("tel:", "").trim();
+  } else {
+    // Class names change — try several known variants and aria-label
+    const phoneEl = article.querySelector(".UsdlK, .rogA2c, [aria-label*='phone' i], [aria-label*='call' i]");
+    if (phoneEl) {
+      phone = phoneEl.getAttribute("aria-label")?.match(/[\+\d][\d\s\-().]{6,}/)?.[0]?.trim()
+           ?? phoneEl.textContent?.trim()
+           ?? null;
+    }
   }
 
+  // Website — stable: skip Google ad redirects; prefer non-google external links
+  let website = null;
+  const candidates = [
+    article.querySelector("a.lcr4fd[href]"),
+    article.querySelector("a[data-item-id='authority']"),
+    article.querySelector("a[aria-label*='website' i]"),
+    ...article.querySelectorAll("a[href^='http']"),
+  ].filter(Boolean);
+  for (const el of candidates) {
+    const href = el.getAttribute("href");
+    if (!href) continue;
+    if (href.startsWith("/aclk") || href.includes("google.com/aclk") || href.includes("google.com/maps")) continue;
+    if (href.includes("google.") || href.includes("goo.gl")) continue;
+    website = href;
+    break;
+  }
+
+  // GPS — encoded in the place link href
   let lat = null, lng = null;
   const placeLink = article.querySelector("a.hfpxzc[href]");
   if (placeLink) {
@@ -43,25 +92,81 @@ function extractFromDetailPanel() {
   const panel = document.querySelector('[role="main"]');
   if (!panel) return {};
 
-  // Description — try several known class/attribute patterns
-  let description = null;
-  for (const sel of [".PYvSYb", ".WgFkxc", '[data-attrid*="description"] span', ".HlvSq"]) {
-    const text = panel.querySelector(sel)?.textContent?.trim();
-    if (text && text.length > 10) { description = text; break; }
+  // ── Phone ────────────────────────────────────────────────────────────────────
+  // Search the whole document — the action buttons (phone, website) are often
+  // rendered in a sibling panel container, NOT inside [role="main"].
+  let phone = null;
+  const phoneEl =
+    document.querySelector('[data-item-id^="phone:tel:"]') ??
+    document.querySelector('[aria-label^="Phone:"]') ??
+    document.querySelector('[data-tooltip="Copy phone number"]');
+  if (phoneEl) {
+    // Prefer formatted number from aria-label: "Phone: 985-1348288"
+    const fromLabel = phoneEl.getAttribute("aria-label")?.match(/Phone[:\s]+(.+)/i)?.[1]?.trim();
+    // Fallback: raw digits from data-item-id: "phone:tel:9851348288"
+    const fromId = phoneEl.getAttribute("data-item-id")?.replace("phone:tel:", "").trim();
+    phone = fromLabel || fromId || null;
+  }
+  if (!phone) {
+    const telLink = document.querySelector("a[href^='tel:']");
+    if (telLink) phone = telLink.getAttribute("href").replace("tel:", "").trim();
+  }
+  console.log("[TomDum] Phone:", phone);
+
+  // ── Website ───────────────────────────────────────────────────────────────────
+  let website = null;
+  // The website link uses data-item-id="authority" — search the whole document
+  const websiteLink =
+    document.querySelector("a[data-item-id='authority']") ??
+    document.querySelector('[data-tooltip="Open website"]') ??
+    document.querySelector('[data-tooltip="Visit website"]');
+  if (websiteLink) {
+    const href = websiteLink.getAttribute("href") ?? "";
+    if (href && !href.startsWith("/aclk") && !href.includes("google.com/aclk")) website = href;
+  }
+  if (!website) {
+    // aria-label="Website: example.com" on a button — extract the URL from the label
+    const websiteLabelEl = document.querySelector('[aria-label^="Website:"]');
+    if (websiteLabelEl) {
+      website = websiteLabelEl.getAttribute("aria-label")?.match(/Website[:\s]+(.+)/i)?.[1]?.trim() ?? null;
+    }
+  }
+  console.log("[TomDum] Website:", website);
+
+  // ── Address — data-item-id="address" with the text in aria-label ──────────
+  let address = null;
+  const addrBtn = panel.querySelector('[data-item-id="address"]');
+  if (addrBtn) {
+    const label = addrBtn.getAttribute("aria-label") ?? "";
+    address = label.replace(/^address[:\s]*/i, "").trim() || addrBtn.textContent?.trim() || null;
   }
 
-  // Hours — full schedule in aria-label on the [data-item-id="oh"] button
+  // ── Description — try stable data-attrid first, then broad text search ────
+  let description = null;
+  for (const sel of [
+    '[data-attrid*="description"] span',
+    '[data-attrid*="merchant_description"] span',
+    ".PYvSYb", ".WgFkxc", ".HlvSq",
+  ]) {
+    const text = panel.querySelector(sel)?.textContent?.trim();
+    if (text && text.length > 15) { description = text; break; }
+  }
+
+  // ── Hours — try old data-item-id="oh" first, then the new inline table ──────
   let hours = null;
   const hoursBtn = panel.querySelector('[data-item-id="oh"]');
   if (hoursBtn) {
     const label = hoursBtn.getAttribute("aria-label") ?? "";
     hours = parseHoursLabel(label);
-    console.log("[TomDum] Raw hours label:", label);
+    console.log("[TomDum] Raw hours label (old):", label);
+  } else {
+    hours = parseHoursTable(panel);
   }
 
-  return { description, hours };
+  return { phone, website, address, description, hours };
 }
 
+// Old format: "monday: 9:00 AM – 5:00 PM; tuesday: closed; …"
 function parseHoursLabel(label) {
   const DAY = {
     monday: "mon", tuesday: "tue", wednesday: "wed",
@@ -80,6 +185,44 @@ function parseHoursLabel(label) {
     else   result[dayKey] = timeRaw;
   }
   return Object.keys(result).length > 0 ? result : null;
+}
+
+// New format: table.eK4R0e with tr.y0skZc rows — td.ylH6lf = day, td.mxowUb = hours
+function parseHoursTable(panel) {
+  const DAY = {
+    monday: "mon", tuesday: "tue", wednesday: "wed",
+    thursday: "thu", friday: "fri", saturday: "sat", sunday: "sun",
+  };
+  const table = panel.querySelector("table.eK4R0e");
+  if (!table) return null;
+
+  const result = {};
+  table.querySelectorAll("tr.y0skZc").forEach((row) => {
+    const dayText = row.querySelector("td.ylH6lf")?.textContent?.trim().toLowerCase();
+    const dayKey  = DAY[dayText];
+    if (!dayKey) return;
+
+    const cell  = row.querySelector("td.mxowUb");
+    if (!cell) return;
+    // aria-label is cleaner than text content (avoids nested whitespace)
+    const label = cell.getAttribute("aria-label")?.trim()
+               ?? cell.querySelector("li.G8aQO")?.textContent?.trim()
+               ?? cell.textContent?.trim();
+    if (!label) return;
+
+    if (/closed/i.test(label))        { result[dayKey] = "closed";     return; }
+    if (/open 24 hours/i.test(label)) { result[dayKey] = "00:00-24:00"; return; }
+
+    const m = label.match(/(\d{1,2}:\d{2})\s*(AM|PM)\s*[–\-]\s*(\d{1,2}:\d{2})\s*(AM|PM)/i);
+    if (m) result[dayKey] = `${to24h(m[1], m[2])}-${to24h(m[3], m[4])}`;
+    else   result[dayKey] = label;
+  });
+
+  if (Object.keys(result).length > 0) {
+    console.log("[TomDum] Hours parsed from table:", result);
+    return result;
+  }
+  return null;
 }
 
 function to24h(time, period) {

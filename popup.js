@@ -53,6 +53,10 @@ function isGoogleMapsPlace(url) {
   return url?.includes("google.com/maps/place/");
 }
 
+function isGoogleMaps(url) {
+  return url?.includes("google.com/maps");
+}
+
 // ─────────────────────────────────────────────
 // Facebook mode
 // ─────────────────────────────────────────────
@@ -142,8 +146,121 @@ function initFacebookMode() {
 // Google Maps / TomDum seeder mode
 // ─────────────────────────────────────────────
 
-function initGmapsMode() {
+async function initGmapsMode(tab) {
   document.getElementById("gmapsMode").style.display = "block";
+
+  const catSelect = document.getElementById("auto-cat-select");
+  const startBtn  = document.getElementById("auto-start-btn");
+  const statusEl  = document.getElementById("auto-status");
+
+  // ── Load categories into <select> ─────────────────────────────
+  chrome.runtime.sendMessage({ action: "FETCH_CATEGORIES" }, (res) => {
+    const cats = res?.success ? res.data : [];
+    catSelect.innerHTML = '<option value="">Select a category…</option>';
+    cats.forEach((parent) => {
+      if ((parent.children ?? []).length > 0) {
+        const og = document.createElement("optgroup");
+        og.label = parent.name;
+        parent.children.forEach((child) => {
+          const opt = document.createElement("option");
+          opt.value = child.id;
+          opt.textContent = child.name;
+          og.appendChild(opt);
+        });
+        catSelect.appendChild(og);
+      } else {
+        const opt = document.createElement("option");
+        opt.value = parent.id;
+        opt.textContent = parent.name;
+        catSelect.appendChild(opt);
+      }
+    });
+    if (cats.length === 0) catSelect.innerHTML = '<option value="">API not reachable</option>';
+  });
+
+  // ── Helpers ───────────────────────────────────────────────────
+  let isRunning = false;
+  let pollTimer = null;
+
+  function setRunningUI(done, skipped, errors) {
+    isRunning = true;
+    startBtn.textContent = "■ Stop Auto-seed";
+    startBtn.className = "primary stop-btn";
+    statusEl.textContent = `Running… ${done} seeded · ${skipped} skipped · ${errors} errors`;
+    statusEl.className = "running";
+  }
+
+  function setIdleUI(msg = "") {
+    isRunning = false;
+    startBtn.textContent = "▶ Start Auto-seed";
+    startBtn.className = "primary td-btn";
+    statusEl.textContent = msg || "Search Google Maps for a category, then start.";
+    statusEl.className = msg.startsWith("Done") ? "" : "";
+    clearInterval(pollTimer);
+  }
+
+  // ── Check if already running (popup reopened mid-run) ─────────
+  chrome.tabs.sendMessage(tab.id, { action: "AUTO_SEED_STATUS" }, (res) => {
+    if (chrome.runtime.lastError || !res) return;
+    if (res.running) setRunningUI(res.done, res.skipped ?? 0, res.errors);
+  });
+
+  // ── Poll status while popup is open ───────────────────────────
+  pollTimer = setInterval(() => {
+    chrome.tabs.sendMessage(tab.id, { action: "AUTO_SEED_STATUS" }, (res) => {
+      if (chrome.runtime.lastError || !res) return;
+      if (res.running) {
+        setRunningUI(res.done, res.skipped ?? 0, res.errors);
+      } else if (isRunning) {
+        setIdleUI(`Done: ${res.done} seeded · ${res.skipped ?? 0} skipped · ${res.errors} errors`);
+      }
+    });
+  }, 1200);
+
+  window.addEventListener("unload", () => clearInterval(pollTimer));
+
+  // ── Start / stop button ───────────────────────────────────────
+  startBtn.addEventListener("click", async () => {
+    if (isRunning) {
+      chrome.tabs.sendMessage(tab.id, { action: "AUTO_SEED_STOP" });
+      setIdleUI("Stopping…");
+      return;
+    }
+
+    const categoryId = catSelect.value;
+    if (!categoryId) {
+      statusEl.textContent = "Select a category first.";
+      statusEl.className = "error";
+      return;
+    }
+
+    const limit       = parseInt(document.getElementById("auto-limit").value, 10) || 50;
+    const skipReviews = document.getElementById("auto-skip-reviews").checked;
+    const { tomdumToken } = await chrome.storage.local.get("tomdumToken");
+    if (!tomdumToken) {
+      statusEl.textContent = "Log in first — use the blue panel on the page.";
+      statusEl.className = "error";
+      return;
+    }
+
+    chrome.tabs.sendMessage(
+      tab.id,
+      { action: "AUTO_SEED_START", config: { categoryId, limit, skipReviews, token: tomdumToken } },
+      (res) => {
+        if (chrome.runtime.lastError) {
+          statusEl.textContent = "Error: refresh Google Maps and try again.";
+          statusEl.className = "error";
+          return;
+        }
+        if (res?.ok) {
+          setRunningUI(0, 0, 0);
+        } else {
+          statusEl.textContent = "Error: " + (res?.error ?? "unknown");
+          statusEl.className = "error";
+        }
+      }
+    );
+  });
 }
 
 // ─────────────────────────────────────────────
@@ -157,7 +274,7 @@ function initGmapsMode() {
 
   if (isFacebookGroup(tab?.url)) {
     initFacebookMode();
-  } else if (isGoogleMapsPlace(tab?.url)) {
+  } else if (isGoogleMaps(tab?.url)) {
     await initGmapsMode(tab);
   } else {
     document.getElementById("neutralMode").style.display = "block";

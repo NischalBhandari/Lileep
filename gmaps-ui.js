@@ -213,6 +213,40 @@ function injectStyles() {
     #tomdum-seed-panel .td-tree-arrow { font-size: 9px; color: #888; margin-right: 5px; }
     #tomdum-seed-panel .td-tree-dot { display: inline-block; width: 12px; color: #ccc; margin-right: 3px; text-align: center; }
     #tomdum-seed-panel .td-tree-context { font-size: 10px; color: #aaa; margin-left: 6px; font-style: italic; }
+
+    /* ── Auto-seed floating progress panel (bottom-left) ── */
+    #td-auto-panel {
+      position: fixed; bottom: 24px; left: 24px; z-index: 9999;
+      width: 310px; background: #fff; border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px; overflow: hidden;
+    }
+    #td-auto-panel .td-auto-header {
+      background: #1565c0; color: white; padding: 9px 13px;
+      font-size: 12px; font-weight: 700;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    #td-auto-panel .td-auto-header button {
+      background: none; border: none; color: white; cursor: pointer;
+      font-size: 14px; padding: 0 0 0 8px; opacity: 0.8; line-height: 1;
+    }
+    #td-auto-panel .td-auto-header button:hover { opacity: 1; }
+    #td-auto-log {
+      padding: 8px 12px; max-height: 190px; overflow-y: auto; min-height: 36px;
+    }
+    #td-auto-log .td-al { font-size: 11px; padding: 1px 0; word-break: break-all; line-height: 1.5; }
+    #td-auto-log .td-al.info    { color: #444; }
+    #td-auto-log .td-al.success { color: #2e7d32; }
+    #td-auto-log .td-al.error   { color: #d32f2f; }
+    #td-auto-log .td-al.warn    { color: #e65100; }
+    #td-auto-log .td-al.dim     { color: #999; }
+    #td-auto-stop-btn {
+      width: 100%; padding: 8px; background: #c62828; color: white;
+      border: none; font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: background 0.15s;
+    }
+    #td-auto-stop-btn:hover { background: #b71c1c; }
   `;
   document.head.appendChild(style);
 }
@@ -917,4 +951,45 @@ function openPanel(biz) {
   seedBtn.disabled = false;
 
   panel.style.display = "";
+}
+
+// ─────────────────────────────────────────────
+// Auto-seed progress panel (bottom-left)
+// ─────────────────────────────────────────────
+
+function injectAutoPanel() {
+  if (document.getElementById("td-auto-panel")) {
+    // Already exists — just clear the log for a fresh run
+    document.getElementById("td-auto-log").innerHTML = "";
+    return;
+  }
+
+  const panel = document.createElement("div");
+  panel.id = "td-auto-panel";
+  panel.innerHTML = `
+    <div class="td-auto-header">
+      <span id="td-auto-panel-title">Auto-seed</span>
+      <button id="td-auto-close-btn" title="Hide panel">✕</button>
+    </div>
+    <div id="td-auto-log"></div>
+    <button id="td-auto-stop-btn">■ Stop Auto-seed</button>
+  `;
+  document.body.appendChild(panel);
+
+  panel.querySelector("#td-auto-close-btn").addEventListener("click", () => panel.remove());
+  panel.querySelector("#td-auto-stop-btn").addEventListener("click", () => {
+    tdAutoRunning = false;
+  });
+}
+
+function updateAutoPanel(msg, type = "info") {
+  console.log("[TomDum Auto]", msg);
+  const log = document.getElementById("td-auto-log");
+  if (!log) return;
+
+  const line = document.createElement("div");
+  line.className = `td-al ${type}`;
+  line.textContent = msg;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
 }

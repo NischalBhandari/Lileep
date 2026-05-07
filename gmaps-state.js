@@ -9,6 +9,48 @@ let tdSavedUser   = null;
 let tdPanelBiz    = null;
 let tdObserver    = null;
 
+// ── Auto-seed state ───────────────────────────────────────────────────────────
+let tdAutoRunning = false;
+let tdAutoStats   = { done: 0, skipped: 0, errors: 0 };
+
+// ── Geo helpers ───────────────────────────────────────────────────────────────
+
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R    = 6_371_000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a    = Math.sin(dLat / 2) ** 2
+             + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
+             * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Returns the nearest area object whose GPS is within thresholdMeters, or null.
+function findNearestArea(lat, lng, areas, thresholdMeters = 1000) {
+  let nearest = null, minDist = Infinity;
+  for (const area of areas) {
+    if (area.lat == null || area.lng == null) continue;
+    const d = haversineMeters(lat, lng, area.lat, area.lng);
+    if (d < minDist) { minDist = d; nearest = area; }
+  }
+  return minDist <= thresholdMeters ? nearest : null;
+}
+
+// Extract a neighbourhood name from a Google Maps address string.
+// e.g. "Thamel, Kathmandu 44600, Nepal" → "Thamel"
+function parseAreaFromAddress(address) {
+  if (!address) return null;
+  const parts = address.split(",").map((s) => s.trim()).filter(Boolean);
+  for (const part of parts) {
+    if (/[A-Z0-9]{4}\+[A-Z0-9]{3,}/.test(part))            continue; // plus code
+    if (/kathmandu|nepal|lalitpur|bhaktapur/i.test(part))   continue;
+    if (/^\d[\d\s]*$/.test(part))                           continue; // pure number / zip
+    if (part.length < 3)                                    continue;
+    return part;
+  }
+  return null;
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

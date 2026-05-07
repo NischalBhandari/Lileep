@@ -175,6 +175,30 @@
     }
     #seedResult { display: none; }
 
+    /* Auto-seed section in Maps mode */
+    .section-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #1a73e8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid #e8f0fe;
+      padding-bottom: 4px;
+      margin-bottom: 6px;
+    }
+    #auto-status {
+      font-size: 11px;
+      color: #606770;
+      text-align: center;
+      min-height: 16px;
+      line-height: 1.5;
+    }
+    #auto-status.running { color: #1565c0; font-weight: 600; }
+    #auto-status.error   { color: #d32f2f; }
+
+    .stop-btn { background: #c62828 !important; }
+    .stop-btn:hover { filter: brightness(0.9); }
+
     /* API target toggle */
     #apiBar {
       display: flex;
@@ -260,10 +284,34 @@
       <div class="badge">Maps</div>
     </header>
     <div class="body">
-      <div style="font-size:12px; color:#444; line-height:1.6; padding: 4px 0;">
-        The <strong>TomDum Seeder panel</strong> is injected directly on the page.<br/><br/>
-        Navigate to a business listing on Google Maps and look for the blue panel in the <strong>bottom-right corner</strong>.
+
+      <!-- Auto-seed -->
+      <div class="section-label">⚡ Auto-seed from search results</div>
+      <div class="field">
+        <label>Category (all businesses go here)</label>
+        <select id="auto-cat-select">
+          <option value="">Loading categories…</option>
+        </select>
       </div>
+      <div class="field">
+        <label>Limit</label>
+        <input type="number" id="auto-limit" value="50" min="1" max="500" />
+      </div>
+      <div class="row">
+        <input type="checkbox" id="auto-skip-reviews" />
+        <label for="auto-skip-reviews">Skip reviews (faster, ~2s/biz vs ~8s)</label>
+      </div>
+      <button id="auto-start-btn" class="primary td-btn">▶ Start Auto-seed</button>
+      <div id="auto-status">Search Google Maps for a category, then start.</div>
+
+      <hr class="divider" />
+
+      <!-- Manual seed -->
+      <div class="section-label">🌱 Manual seed</div>
+      <div style="font-size:12px; color:#444; line-height:1.6;">
+        Click any business on Maps, then use the <strong>blue panel</strong> in the <strong>bottom-right corner</strong> to seed it with full details.
+      </div>
+
     </div>
   </div>
 
